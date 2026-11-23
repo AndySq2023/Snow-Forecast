@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { summariseLocation, forecastUrl } from '../lib/openmeteo.js';
-import { buildReport, thresholds } from '../lib/snow.js';
+import { buildReport, estimateSnowLine } from '../lib/snow.js';
 import { RESORTS, FORECAST_POINTS } from '../lib/resorts.js';
 
 // A synthetic Open-Meteo location in its documented shape: local wall-clock
@@ -51,41 +51,53 @@ test('the request asks for every point, in resort order', () => {
 });
 
 const station = (over = {}) => ({ altitude: 1800, observedAt: '2026-11-23T07:00:00Z', depthCm: 80, depthHigherCm: null, new24Cm: 4, history: [], ...over });
-const forecastFor = (next72) => RESORTS.flatMap(() => [
-  summariseLocation(location({ snowAt: (i) => (i === 50 ? 3 : 0) }), NOW),
-  summariseLocation(location({ snowAt: (i) => (i >= 60 && i < 60 + next72 ? 1 : 0) }), NOW),
+const forecastFor = (depthM = 0.5) => RESORTS.flatMap(() => [
+  summariseLocation(location({ snowAt: (i) => (i === 50 ? 3 : 0), depthM }), NOW),
+  summariseLocation(location({ depthM }), NOW),
 ]);
-const limits = { freshCm: 15, forecastCm: 20 };
 
 test('a recent patrol reading wins over the model for fresh snow', () => {
-  const r = buildReport({ stations: { 7893: station({ new24Cm: 18 }) }, forecast: forecastFor(0), nowMs: NOW, limits });
-  const c = r.resorts.find((x) => x.id === 'courchevel');
-  assert.deepEqual(c.fresh, { cm: 18, source: 'measured' });
-  assert.deepEqual(r.alerts.map((a) => [a.resort, a.kind]), [['courchevel', 'fresh']]);
+  const r = buildReport({ stations: { 7893: station({ new24Cm: 18 }) }, forecast: forecastFor(), nowMs: NOW });
+  assert.deepEqual(r.resorts.find((x) => x.id === 'courchevel').fresh, { cm: 18, source: 'measured' });
 });
 
 test('an old reading is marked stale and the model is used instead', () => {
-  const r = buildReport({ stations: { 7893: station({ observedAt: '2026-11-19T07:00:00Z', new24Cm: 40 }) }, forecast: forecastFor(0), nowMs: NOW, limits });
+  const r = buildReport({ stations: { 7893: station({ observedAt: '2026-11-19T07:00:00Z', new24Cm: 40 }) }, forecast: forecastFor(), nowMs: NOW });
   const c = r.resorts.find((x) => x.id === 'courchevel');
   assert.equal(c.measured.stale, true);
   assert.deepEqual(c.fresh, { cm: 3, source: 'model' });
-  assert.equal(r.alerts.length, 0);
 });
 
-test('a big forecast at the summit raises a forecast alert for each resort', () => {
-  const r = buildReport({ stations: {}, forecast: forecastFor(25), nowMs: NOW, limits });
-  assert.equal(r.alerts.filter((a) => a.kind === 'forecast').length, RESORTS.length);
-  assert.match(r.alerts[0].text, /25cm forecast/);
-});
-
-test('with neither source the report still has every resort and no alerts', () => {
-  const r = buildReport({ stations: null, forecast: null, errors: [{ source: 'forecast', message: 'x' }], nowMs: NOW, limits });
+test('with neither source the report still has every resort', () => {
+  const r = buildReport({ stations: null, forecast: null, errors: [{ source: 'forecast', message: 'x' }], nowMs: NOW });
   assert.equal(r.resorts.length, RESORTS.length);
-  assert.equal(r.alerts.length, 0);
   assert.equal(r.resorts[0].fresh, null);
+  assert.equal(r.snowLineM, null);
 });
 
-test('thresholds come from env with sane defaults', () => {
-  assert.deepEqual(thresholds({}), { freshCm: 15, forecastCm: 20 });
-  assert.deepEqual(thresholds({ ALERT_FRESH_CM: '10', ALERT_FORECAST_CM: 'nope' }), { freshCm: 10, forecastCm: 20 });
+test('6-hour blocks cover the whole range and mark the past', () => {
+  const s = summariseLocation(location({ snowAt: (i) => (i < 6 ? 1 : 0) }), NOW);
+  assert.equal(s.blocks.length, 36);
+  assert.equal(s.blocks[0].snowfallCm, 6);
+  assert.equal(s.blocks[0].start, '2026-11-21T00:00');
+  // now = index 60: the block 54..59 is past, 60..65 is not.
+  assert.equal(s.blocks[9].past, true);
+  assert.equal(s.blocks[10].past, false);
+});
+
+test('snow line sits between the highest bare point and the lowest covered one', () => {
+  assert.equal(estimateSnowLine([
+    { elevation: 1700, depthCm: 0 }, { elevation: 1850, depthCm: 2 }, { elevation: 2300, depthCm: 40 }, { elevation: 2900, depthCm: 90 },
+  ]), 2100);
+});
+
+test('snow line goes below the lowest point when everything is covered, null when nothing is', () => {
+  assert.equal(estimateSnowLine([{ elevation: 1750, depthCm: 30 }, { elevation: 2900, depthCm: 80 }]), 1500);
+  assert.equal(estimateSnowLine([{ elevation: 1750, depthCm: 0 }, { elevation: 2900, depthCm: 3 }]), null);
+});
+
+test('the report carries a snow line from trusted depths only', () => {
+  // Stale station says 80cm at 1800m; the model has no snow anywhere → no snow line.
+  const r = buildReport({ stations: { 7893: station({ observedAt: '2026-11-01T07:00:00Z' }) }, forecast: forecastFor(0), nowMs: NOW });
+  assert.equal(r.snowLineM, null);
 });

@@ -7,7 +7,7 @@ import { extname, join, normalize } from 'node:path';
 
 const root = new URL('.', import.meta.url).pathname;
 const port = Number(process.env.PORT) || 3000;
-const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
+const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css' };
 
 http.createServer(async (req, res) => {
   const path = new URL(req.url, 'http://x').pathname;

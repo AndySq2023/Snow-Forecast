@@ -1,72 +1,55 @@
 # ❄️ Les 3 Vallées snow
 
-Live snow depths and new-snow alerts for **Courchevel, Méribel, Les Menuires and Val Thorens**.
-A single page on Vercel: open it when you want, add it to your phone's home screen, and get a
-push notification when it snows.
+A passive snow dashboard for **Courchevel, Méribel, Les Menuires and Val Thorens**: open it when you
+want to know how much snow there is and when more is coming. No accounts, no notifications.
 
-## What it shows
+## What's on the page
+
+- **3D terrain of Les 3 Vallées** — real elevation, slowly orbiting (drag to look around), shaded
+  white above the estimated snow line, with a pin per resort showing its depth and the next 72h of
+  snow. Falling snow over the view when the forecast says it's snowing right now.
+- **A card per resort** — the ski patrol's measured depth (and their "higher up" estimate), how old
+  that reading is, new snow in the last 24h, the next 24h/72h forecast at the top and in the village,
+  and a side-on mountain profile with depth at each altitude, the snow line and the freezing level.
+- **When the snow arrives** — a heatmap of snowfall every 6 hours, top and village of each resort,
+  from two days ago to a week ahead.
+- **Season so far** — measured depth at each resort since 1 September.
 
 | | Source | Notes |
 |---|---|---|
-| **Measured depth** | Météo-France snow stations, read by each resort's ski patrol | Once or twice a day in season. Early/late season the readings can be days apart — the page shows the reading's age, flags anything over 36h as *Old reading*, and hides last season's. Also shows the patrol's "higher up" estimate when given. |
-| **New snow 24h** | The patrol's snow board if the reading is recent, otherwise the forecast model | Labelled *measured* or *model*. |
-| **Forecast** | Open-Meteo, at the village and at the top of each resort | Next 24h / 72h, model snow depth, freezing level, and a daily chart (past 2 days + next 7). |
+| Measured depth | Météo-France snow stations, read by each resort's ski patrol | Once or twice a day in season. Early/late season the readings can be days apart — the page shows their age, flags anything over 36h as *Old reading*, and treats anything over 3 weeks as last season's. |
+| Forecast, model depth, freezing level | Open-Meteo | At each resort's village and summit. |
+| Snow line | Estimated from the two above | Halfway between the highest bare point and the lowest covered one. |
+| 3D terrain | AWS Terrain Tiles, rendered with MapLibre GL | Loaded from public CDNs, no key. |
 
-## Alerts
+## Deploy (one time)
 
-A Vercel cron calls `/api/alert` every morning at 06:00 UTC (7am in France in winter). If a
-resort passes a threshold, it sends **one** push notification through [ntfy](https://ntfy.sh)
-(free, no account):
+Vercel → **Add New → Project → import `Snow-Forecast`**. Framework preset: *Other*, no build
+command, no output directory. Deploy. That's it — no environment variables are required.
 
-- **Fresh snow:** ≥ `ALERT_FRESH_CM` (default 15) cm in the last 24h
-- **Snow on the way:** ≥ `ALERT_FORECAST_CM` (default 20) cm forecast over the next 72h at the top
+Optional: `OPEN_METEO_API_KEY`, only if the free Open-Meteo tier ever runs out (below).
 
-The page shows the same alerts as a banner, from the same code.
-
-## Deploy (one time, ~5 minutes)
-
-1. **Vercel → Add New → Project → import `Snow-Forecast`.** Framework preset: *Other*. No build
-   command, no output directory. Deploy.
-2. **Pick an ntfy topic.** Topics are public-by-name, so make it unguessable, e.g.
-   `3v-snow-` followed by a few random words. Install the **ntfy** app (iOS/Android), tap **+**, and
-   subscribe to that topic.
-3. **Vercel → Project → Settings → Environment Variables:**
-
-   | Name | Value |
-   |---|---|
-   | `NTFY_TOPIC` | your topic from step 2 |
-   | `CRON_SECRET` | any long random string (stops anyone else triggering your alerts) |
-   | `ALERT_FRESH_CM` | optional, default `15` |
-   | `ALERT_FORECAST_CM` | optional, default `20` |
-   | `SITE_URL` | optional, the URL tapping a notification opens (defaults to the deployment) |
-   | `OPEN_METEO_API_KEY` | optional, only if the free Open-Meteo tier ever runs out (see below) |
-
-   Then **redeploy** so the functions pick them up.
-4. **Test the notification:**
-   `curl -H "Authorization: Bearer <CRON_SECRET>" "https://<your-site>/api/alert?test=1"`
-   (`?dry=1` shows what would be sent without sending.)
-5. On your phone, open the site and **Add to Home Screen**.
+On your phone, open the site and **Add to Home Screen**; it opens full-screen like an app.
 
 ## How it works
 
 ```
-index.html        the whole page (no framework, no build)
-api/snow.js       GET /api/snow  → the report (CDN-cached 30 min; ?fresh=1 skips it)
-api/alert.js      GET /api/alert → cron: push to ntfy when a threshold is passed
-lib/resorts.js    the 4 resorts: station ids + forecast points
-lib/nivo.js       Météo-France station CSV → latest reading per station
-lib/openmeteo.js  Open-Meteo → past/next snowfall, depth, daily series
-lib/snow.js       combines both + decides alerts (shared by page and cron)
+index.html        page shell + styles (dark theme)
+js/app.js         fetches /api/snow and renders everything
+js/map3d.js       the 3D terrain map (MapLibre GL 5.24.0 from unpkg)
+js/charts.js      heatmap, season chart, mountain profiles (plain SVG)
+js/snowfall.js    falling-snow canvas (off for prefers-reduced-motion)
+api/snow.js       GET /api/snow → the report (CDN-cached 30 min; ?fresh=1 skips it)
+lib/resorts.js    the 4 resorts: station ids + forecast points (shared by server and page)
+lib/nivo.js       Météo-France station CSV → latest reading + season history per station
+lib/openmeteo.js  Open-Meteo → past/next snowfall, depth, 6-hour blocks, daily series
+lib/snow.js       combines both sources + estimates the snow line
 ```
 
-**Open-Meteo's free tier** is 10,000 calls a day *per IP*, and Vercel's outbound IPs are shared
-with other sites, so the report is cached at the CDN (at most ~2 upstream calls an hour, however
-often you open it). If you ever see *"Daily API request limit exceeded"* on the page, the station
-readings still show; setting `OPEN_METEO_API_KEY` (paid plan) switches to the dedicated endpoint.
-
-**Vercel Hobby plan** allows cron jobs once a day, which is why the alert is a morning check. On
-Pro you can change the schedule in `vercel.json` (e.g. `"0 */3 * * *"`), but you'd then get the
-same alert repeated while the snow is still within the 24h/72h window.
+**Open-Meteo's free tier** is 10,000 calls a day *per IP*, and Vercel's outbound IPs are shared with
+other sites, so the report is cached at the CDN (at most ~2 upstream calls an hour, however often
+you open it). If the page ever says *"Daily API request limit exceeded"*, the patrol readings and
+the map still show; setting `OPEN_METEO_API_KEY` (paid plan) switches to the dedicated endpoint.
 
 ## Develop
 

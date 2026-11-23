@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { parseNivo, getStations } from '../lib/nivo.js';
+import { parseNivo, getStations, seasonStart } from '../lib/nivo.js';
 
 const csv = readFileSync(new URL('./fixtures/nivo_sample.csv', import.meta.url), 'utf8');
 
@@ -44,7 +44,17 @@ test('a missing yearly file (403/404) means no readings, not an error', async ()
   assert.deepEqual(await getStations(['7498'], { now: new Date('2026-11-23'), fetchImpl }), {});
 });
 
-test('in January the previous year is read too', async () => {
+test('history starts at the given date', () => {
+  const h = parseNivo([csv], ['7498'], '2026-02-11')['7498'].history;
+  assert.ok(h.length > 0 && h.every((x) => x.date >= '2026-02-11'));
+});
+
+test('a season starts on 1 September and spans two calendar years', () => {
+  assert.equal(seasonStart(new Date('2026-11-23')), '2026-09-01');
+  assert.equal(seasonStart(new Date('2027-03-10')), '2026-09-01');
+});
+
+test('from January to August the previous year is read too', async () => {
   const urls = [];
   const fetchImpl = async (url) => {
     urls.push(url);
