@@ -1,0 +1,11 @@
+{
+  "name": "snow-forecast",
+  "private": true,
+  "type": "module",
+  "description": "Live snow depths and new-snow alerts for Les 3 Vallées (Courchevel, Méribel, Les Menuires, Val Thorens).",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "NODE_USE_ENV_PROXY=1 node dev-server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

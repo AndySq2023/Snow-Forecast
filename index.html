@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>3 Vallées Snow</title>
+<meta name="description" content="Live snow depths and new-snow alerts for Courchevel, Méribel, Les Menuires and Val Thorens.">
+<meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --surface: #fcfcfb;
+    --border: #e3e6ea;
+    --text: #15181c;
+    --text-2: #4a525c;
+    --muted: #737b86;
+    --snow: #2a78d6;          /* bars + accents: one sequential hue */
+    --snow-soft: #e8f1fc;
+    --grid: #e6e8eb;
+    --stale: #fab219;         /* status: warning (always with icon + label) */
+    --stale-ink: #7a5200;
+    --alert-bg: #0f3d78;
+    --alert-ink: #ffffff;
+    --err-bg: #fdecec;
+    --err-ink: #8a1f1f;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121417;
+      --card: #1b1e22;
+      --surface: #1a1a19;
+      --border: #2c3137;
+      --text: #eef1f4;
+      --text-2: #b6bdc6;
+      --muted: #8a929c;
+      --snow: #3987e5;
+      --snow-soft: #18263a;
+      --grid: #2c3137;
+      --stale-ink: #fab219;
+      --alert-bg: #1d4f91;
+      --err-bg: #3a1c1c;
+      --err-ink: #ffb4b4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121417; --card: #1b1e22; --surface: #1a1a19; --border: #2c3137;
+    --text: #eef1f4; --text-2: #b6bdc6; --muted: #8a929c; --snow: #3987e5;
+    --snow-soft: #18263a; --grid: #2c3137; --stale-ink: #fab219; --alert-bg: #1d4f91;
+    --err-bg: #3a1c1c; --err-ink: #ffb4b4;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 16px; }
+  header h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  button.refresh {
+    font: inherit; font-size: 14px; color: var(--text); background: var(--card);
+    border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  }
+  button.refresh:disabled { opacity: .6; cursor: progress; }
+
+  .banner { border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; }
+  .banner.alert { background: var(--alert-bg); color: var(--alert-ink); }
+  .banner.alert strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  .banner.alert ul { margin: 0; padding-left: 20px; }
+  .banner.err { background: var(--err-bg); color: var(--err-ink); font-size: 14px; }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+  }
+  .card.hot { box-shadow: 0 0 0 2px var(--snow); border-color: transparent; }
+  .card h2 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .flake { font-size: 16px; }
+
+  .hero { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .hero .big { font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .hero .big small { font-size: 18px; font-weight: 600; color: var(--text-2); margin-left: 2px; }
+  .hero .what { color: var(--text-2); font-size: 13px; line-height: 1.3; }
+  .obs { font-size: 13px; color: var(--muted); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
+    color: var(--stale-ink); border: 1px solid var(--stale); border-radius: 999px; padding: 1px 8px; margin-left: 4px;
+  }
+  .hero.dim .big { color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--snow-soft); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+  .stat .v { font-size: 20px; font-weight: 700; }
+  .stat .v small { font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .stat .n { font-size: 11px; line-height: 1.3; color: var(--muted); }
+  .stat .k { white-space: nowrap; }
+
+  .meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+
+  .chart-title { font-size: 13px; color: var(--text-2); margin: 0 0 4px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart .tip {
+    position: absolute; pointer-events: none; background: var(--text); color: var(--bg);
+    font-size: 12px; padding: 6px 8px; border-radius: 6px; white-space: nowrap;
+    transform: translate(-50%, calc(-100% - 8px)); opacity: 0; transition: opacity .1s;
+  }
+  .chart .tip.on { opacity: 1; }
+  details { font-size: 13px; color: var(--text-2); }
+  details summary { cursor: pointer; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+
+  footer { margin-top: 24px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  footer a { color: inherit; }
+  .skeleton { color: var(--muted); padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>❄️ Les 3 Vallées snow</h1>
+      <div class="sub" id="updated">Loading…</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="refresh" id="refresh" type="button">↻ Refresh</button>
+  </header>
+
+  <div id="banners"></div>
+  <main class="grid" id="resorts"><div class="skeleton">Fetching the latest snow reports…</div></main>
+
+  <footer>
+    <strong>Measured</strong> depths are the ski patrol's readings at each Météo-France snow station
+    (<a href="https://meteo.data.gouv.fr" rel="noopener">Météo-France</a>, Licence Ouverte), reported once or twice a day in season —
+    early and late in the season they can be days apart. <strong>Forecast</strong> and modelled depths:
+    <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a> (CC BY 4.0). Snowfall is fresh snow in cm, not water equivalent.
+    <span id="limits"></span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var REFRESH_MS = 30 * 60 * 1000;
+  var TZ = 'Europe/Paris';
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function n(v, unit) { return v === null || v === undefined ? '–' : v + (unit || ''); }
+  // A value with its unit as a smaller suffix, or a bare dash when missing.
+  function cmv(v) { return v === null || v === undefined ? '–' : v + '<small>cm</small>'; }
+  // Older than this, a patrol reading is last season's, not a stale one from this season.
+  var LAST_SEASON_HOURS = 21 * 24;
+
+  var fmtWhen = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+  function ago(hours) {
+    if (hours < 1) return 'just now';
+    if (hours < 36) return hours + 'h ago';
+    var d = Math.round(hours / 24);
+    return d < 60 ? d + ' days ago' : Math.round(d / 30) + ' months ago';
+  }
+  function dayLabel(iso) {
+    var d = new Date(iso + 'T12:00:00Z');
+    return {
+      dow: d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }),
+      dom: d.getUTCDate(),
+      long: d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    };
+  }
+
+  // ---- chart: daily snowfall at the summit, one series, bars from a zero baseline
+  function chart(id, days) {
+    var W = 320, H = 150, padL = 4, padR = 4, padT = 18, padB = 30;
+    var plotH = H - padT - padB, plotW = W - padL - padR;
+    var max = Math.max.apply(null, days.map(function (d) { return d.snowfallCm; }).concat([10]));
+    max = Math.ceil(max / 10) * 10;
+    var slot = plotW / days.length, gap = 2, bw = Math.min(26, slot - gap * 2 - 6);
+    var y = function (v) { return padT + plotH - (v / max) * plotH; };
+    var parts = [];
+    // recessive grid: baseline + one mid line
+    [0, max / 2, max].forEach(function (v, i) {
+      parts.push('<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--grid)" stroke-width="1"' + (i ? ' stroke-dasharray="2 3"' : '') + '/>');
+      if (i) parts.push('<text x="' + (W - padR) + '" y="' + (y(v) - 3) + '" text-anchor="end" font-size="9" fill="var(--muted)">' + v + 'cm</text>');
+    });
+    days.forEach(function (d, i) {
+      var cx = padL + slot * i + slot / 2;
+      var h = Math.max(0, (d.snowfallCm / max) * plotH);
+      var x = cx - bw / 2, top = padT + plotH - h, r = Math.min(4, h);
+      if (h > 0.5) {
+        // rounded top corners, square at the baseline
+        parts.push('<path d="M' + x + ',' + (padT + plotH) + 'V' + (top + r) + 'Q' + x + ',' + top + ' ' + (x + r) + ',' + top +
+          'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + top + ' ' + (x + bw) + ',' + (top + r) + 'V' + (padT + plotH) + 'Z" fill="var(--snow)"' +
+          (d.past ? ' fill-opacity="0.45"' : '') + '/>');
+      }
+      if (d.snowfallCm >= 1) {
+        parts.push('<text x="' + cx + '" y="' + (top - 4) + '" text-anchor="middle" font-size="10" font-weight="600" fill="var(--text-2)">' + Math.round(d.snowfallCm) + '</text>');
+      }
+      var lbl = dayLabel(d.date);
+      var isToday = !d.past && (i === 0 || days[i - 1].past);
+      parts.push('<text x="' + cx + '" y="' + (H - padB + 13) + '" text-anchor="middle" font-size="10" fill="' + (isToday ? 'var(--text)' : 'var(--muted)') + '"' + (isToday ? ' font-weight="700"' : '') + '>' + (isToday ? 'Today' : lbl.dow) + '</text>');
+      parts.push('<text x="' + cx + '" y="' + (H - padB + 25) + '" text-anchor="middle" font-size="9" fill="var(--muted)">' + lbl.dom + '</text>');
+      // hit target: the whole column, bigger than the bar
+      parts.push('<rect class="hit" data-i="' + i + '" x="' + (padL + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>');
+    });
+    return '<div class="chart" id="' + id + '"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Daily snowfall, past two days and next seven">' +
+      parts.join('') + '</svg><div class="tip"></div></div>';
+  }
+
+  function wireChart(el, days) {
+    var tip = el.querySelector('.tip'), svg = el.querySelector('svg');
+    function show(e) {
+      var t = e.target;
+      if (!t.classList || !t.classList.contains('hit')) return;
+      var d = days[+t.getAttribute('data-i')];
+      var box = svg.getBoundingClientRect(), r = t.getBoundingClientRect();
+      tip.innerHTML = '<strong>' + esc(dayLabel(d.date).long) + '</strong>' + (d.past ? ' · past' : '') +
+        '<br>' + d.snowfallCm + ' cm snow' + (d.tMin !== null ? ' · ' + Math.round(d.tMin) + '° / ' + Math.round(d.tMax) + '°' : '');
+      tip.style.left = (r.left - box.left + r.width / 2) + 'px';
+      tip.style.top = '18px';
+      tip.classList.add('on');
+    }
+    svg.addEventListener('mouseover', show);
+    svg.addEventListener('click', show);
+    svg.addEventListener('mouseleave', function () { tip.classList.remove('on'); });
+  }
+
+  function table(days) {
+    return '<details><summary>Show as table</summary><table><thead><tr><th>Day</th><th>Snow</th><th>Min</th><th>Max</th></tr></thead><tbody>' +
+      days.map(function (d) {
+        return '<tr><td>' + esc(dayLabel(d.date).long) + (d.past ? ' (past)' : '') + '</td><td>' + d.snowfallCm + ' cm</td><td>' +
+          n(d.tMin === null ? null : Math.round(d.tMin), '°') + '</td><td>' + n(d.tMax === null ? null : Math.round(d.tMax), '°') + '</td></tr>';
+      }).join('') + '</tbody></table></details>';
+  }
+
+  function card(r, alerts) {
+    var m = r.measured, v = r.village, s = r.summit;
+    var hot = alerts.some(function (a) { return a.resort === r.id; });
+    var h = '<section class="card' + (hot ? ' hot' : '') + '"><h2>' + esc(r.name) + (hot ? ' <span class="flake" title="Snow alert">❄️</span>' : '') + '</h2>';
+
+    var lastSeason = m && m.ageHours > LAST_SEASON_HOURS;
+    if (m && m.depthCm !== null && !lastSeason) {
+      h += '<div class="hero' + (m.stale ? ' dim' : '') + '"><div class="big">' + m.depthCm + '<small>cm</small></div>' +
+        '<div class="what">measured at ' + m.altitude + 'm' +
+        (m.depthHigherCm !== null ? '<br><strong>' + m.depthHigherCm + 'cm</strong> higher up' : '') + '</div></div>' +
+        '<div class="obs">Patrol reading ' + esc(fmtWhen.format(new Date(m.observedAt))) + ' · ' + ago(m.ageHours) +
+        (m.stale ? '<span class="tag">⚠ Old reading</span>' : '') + '</div>';
+    } else {
+      h += '<div class="hero dim"><div class="big">–</div><div class="what">No patrol reading yet this season</div></div>' +
+        (lastSeason && m.depthCm !== null ? '<div class="obs">Last reading: ' + m.depthCm + 'cm on ' + esc(fmtWhen.format(new Date(m.observedAt))) + '</div>' : '');
+    }
+
+    h += '<div class="stats">' +
+      '<div class="stat"><div class="k">New 24h</div><div class="v">' + cmv(r.fresh && r.fresh.cm) + '</div><div class="n">' +
+        (r.fresh ? (r.fresh.source === 'measured' ? 'measured' : 'model') : 'no data') + '</div></div>' +
+      '<div class="stat"><div class="k">Next 24h</div><div class="v">' + cmv(s && s.next24Cm) + '</div><div class="n">' +
+        (s ? 'at the top · village ' + n(v.next24Cm, 'cm') : 'no forecast') + '</div></div>' +
+      '<div class="stat"><div class="k">Next 72h</div><div class="v">' + cmv(s && s.next72Cm) + '</div><div class="n">' +
+        (s ? 'at the top · village ' + n(v.next72Cm, 'cm') : 'no forecast') + '</div></div>' +
+      '</div>';
+
+    if (s) {
+      h += '<div class="meta"><span>Model depth: ' + n(v.depthCm) + 'cm at ' + v.elevation + 'm · ' + n(s.depthCm) + 'cm at ' + s.elevation + 'm</span>' +
+        (v.freezingLevelM !== null ? '<span>Freezing level ' + v.freezingLevelM + 'm</span>' : '') + '</div>';
+      h += '<div><p class="chart-title">Daily snowfall at ' + esc(s.label) + ' (' + s.elevation + 'm)</p>' + chart('c-' + r.id, s.daily) + table(s.daily) + '</div>';
+    }
+    return h + '</section>';
+  }
+
+  function render(data) {
+    var b = '';
+    if (data.alerts && data.alerts.length) {
+      b += '<div class="banner alert" role="status"><strong>❄️ Snow alert</strong><ul>' +
+        data.alerts.map(function (a) { return '<li>' + esc(a.text) + '</li>'; }).join('') + '</ul></div>';
+    }
+    (data.errors || []).forEach(function (e) {
+      b += '<div class="banner err">⚠ ' + (e.source === 'forecast' ? 'Forecast unavailable' : 'Station readings unavailable') + ': ' + esc(e.message) + '</div>';
+    });
+    $('banners').innerHTML = b;
+    $('resorts').innerHTML = data.resorts.map(function (r) { return card(r, data.alerts || []); }).join('');
+    data.resorts.forEach(function (r) {
+      var el = $('c-' + r.id);
+      if (el && r.summit) wireChart(el, r.summit.daily);
+    });
+    $('updated').textContent = 'Updated ' + fmtTime.format(new Date(data.generatedAt));
+    $('limits').textContent = 'Alerts fire at ≥' + data.limits.freshCm + 'cm new snow in 24h, or ≥' + data.limits.forecastCm + 'cm forecast at the top over 72h.';
+  }
+
+  var loading = false;
+  function load(fresh) {
+    if (loading) return;
+    loading = true;
+    $('refresh').disabled = true;
+    fetch('/api/snow' + (fresh ? '?fresh=1' : ''))
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); })
+      .then(function (j) {
+        render(j);
+        try { localStorage.setItem('snow:last', JSON.stringify(j)); } catch (e) {}
+      })
+      .catch(function (e) {
+        $('banners').innerHTML = '<div class="banner err">⚠ Couldn’t load the snow report: ' + esc(e.message) + '</div>';
+      })
+      .then(function () { loading = false; $('refresh').disabled = false; });
+  }
+
+  // Show the last report instantly (offline / slow signal on the mountain), then refresh.
+  try {
+    var cached = JSON.parse(localStorage.getItem('snow:last') || 'null');
+    if (cached && cached.resorts) { render(cached); $('updated').textContent += ' · refreshing…'; }
+  } catch (e) {}
+
+  $('refresh').addEventListener('click', function () { load(true); });
+  load(false);
+  setInterval(function () { if (document.visibilityState === 'visible') load(false); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') load(false);
+  });
+})();
+</script>
+</body>
+</html>
