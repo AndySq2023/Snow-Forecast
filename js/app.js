@@ -1,6 +1,7 @@
 import { heatmap, seasonChart, profile, SERIES, esc } from './charts.js';
 import { renderMap } from './map3d.js';
 import { setSnowfall } from './snowfall.js';
+import { initWindy, initWebcams } from './live.js';
 
 const REFRESH_MS = 30 * 60 * 1000;
 const TZ = 'Europe/Paris';
@@ -94,6 +95,8 @@ try {
   if (cached?.resorts) { render(cached); $('updated').textContent += ' · refreshing…'; }
 } catch {}
 $('refresh').addEventListener('click', () => load(true));
+initWindy($('windy'));
+initWebcams($('webcams'), SERIES);
 load(false);
 setInterval(() => { if (document.visibilityState === 'visible') load(false); }, REFRESH_MS);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(false); });

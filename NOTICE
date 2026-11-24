@@ -28,3 +28,5 @@ SOFTWARE.
 Data sources (fetched at runtime, not redistributed in this repository):
   Météo-France nivo-meteorological observations — Licence Ouverte / Etalab 2.0
   Open-Meteo forecast API — data under CC BY 4.0, https://open-meteo.com
+  Windy.com — embedded map, and webcams via the Windy Webcams API under its terms of use
+    (https://api.windy.com/webcams/terms)

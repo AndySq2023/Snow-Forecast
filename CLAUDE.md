@@ -6,7 +6,13 @@ Standalone project, unrelated to any other repo.
 - **No build, no npm dependencies.** `index.html` + ES modules in `js/`; `api/*.js` are Vercel Node
   functions; `lib/*.js` is shared logic (`lib/resorts.js` is imported by both server and browser).
   The only third-party runtime code is MapLibre GL, pinned to an exact version on unpkg in
-  `js/map3d.js`; terrain tiles are the keyless AWS Terrain Tiles.
+  `js/map3d.js`; terrain tiles are the keyless AWS Terrain Tiles. The Live section embeds Windy's
+  official map iframe (`js/live.js`, no key).
+- **Webcams** (`lib/webcams.js`, `api/webcams.js`) use the Windy Webcams API free tier with
+  `WINDY_WEBCAMS_KEY`. Its terms are binding: image URLs expire ~10 min after the API call (keep
+  `/api/webcams` cached ≤4 min, apart from `/api/snow`, and keep the page's 8-min refresh), link every
+  image to `cam.link` on windy.com, never upscale/stretch images, and keep the "Webcams provided by
+  windy.com — add a webcam" courtesy line next to them.
 - **Dark theme only.** Colours are CSS tokens in `index.html`; resort series colours `--s1..--s4`
   are fixed to resort order (never re-assign by rank). Heatmap steps live in `js/charts.js`.
 - **Data:** measured depth from the Météo-France nivo CSV (`lib/nivo.js`, ported from
